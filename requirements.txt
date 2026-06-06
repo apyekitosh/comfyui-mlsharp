@@ -1,0 +1,5 @@
+timm>=1.0.0
+scipy>=1.10.0
+plyfile>=1.0.0
+imageio[ffmpeg]>=2.30.0
+pillow-heif>=1.0.0
