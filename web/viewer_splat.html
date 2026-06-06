@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SHARP Gaussian Splat Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a1a;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #viewerContainer {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+        #status {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            pointer-events: none;
+            text-align: center;
+            padding: 12px;
+        }
+        #status.idle   { color: #555; }
+        #status.busy   { color: #aaa; }
+        #status.error  { color: #e06060; }
+        #controlsBar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            background: #222;
+            padding: 6px 10px;
+            border-top: 1px solid #333;
+            flex-shrink: 0;
+        }
+        #controlsBar button {
+            background: #3a3a3a;
+            border: none;
+            color: #ccc;
+            padding: 3px 9px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        #controlsBar button:hover { background: #4a4a4a; }
+        .ctrl { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #777; }
+        .ctrl input[type="number"] {
+            width: 52px;
+            background: #2e2e2e;
+            border: 1px solid #444;
+            color: #ddd;
+            font-size: 11px;
+            padding: 3px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewerContainer">
+        <canvas id="canvas"></canvas>
+        <div id="status" class="idle">Waiting for output...</div>
+    </div>
+    <div id="controlsBar">
+        <div class="ctrl">
+            <span>Scale:</span>
+            <input type="number" id="scaleInput" min="0.01" max="200" step="0.5" value="1.0">
+        </div>
+        <button id="resetBtn">Reset View</button>
+    </div>
+
+    <script src="./js/gsplat-bundle.js"></script>
+    <script type="module">
+        const SPLAT = window.GSPLAT;
+
+        const canvas   = document.getElementById('canvas');
+        const statusEl = document.getElementById('status');
+        const scaleInput = document.getElementById('scaleInput');
+
+        function setStatus(text, type = 'idle') {
+            statusEl.className = 'status ' + type;
+            statusEl.textContent = text;
+            statusEl.style.display = 'flex';
+        }
+        function hideStatus() { statusEl.style.display = 'none'; }
+
+        canvas.tabIndex = 0;
+        canvas.style.outline = 'none';
+        canvas.addEventListener('pointerdown', () => canvas.focus({ preventScroll: true }));
+
+        let scene, camera, renderer, controls;
+        let currentSplat = null, originalScales = null, initialCam = null;
+        let scaleJob = null;
+        const CHUNK = 200000;
+
+        function init() {
+            try {
+                scene    = new SPLAT.Scene();
+                camera   = new SPLAT.Camera();
+                renderer = new SPLAT.WebGLRenderer(canvas);
+                controls = new SPLAT.OrbitControls(camera, canvas);
+
+                const resize = () => renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+                new ResizeObserver(resize).observe(canvas);
+                resize();
+
+                const frame = () => {
+                    controls.update();
+                    renderer.render(scene, camera);
+                    requestAnimationFrame(frame);
+                };
+                frame();
+            } catch (e) {
+                setStatus('WebGL init failed: ' + e.message, 'error');
+                console.error('[SHARP Viewer] init error:', e);
+            }
+        }
+
+        function applyScale(factor) {
+            if (!currentSplat?.data?.scales || !originalScales) return;
+            if (scaleJob) scaleJob.cancelled = true;
+
+            const job = { factor, index: 0, cancelled: false };
+            scaleJob = job;
+            const scales = currentSplat.data.scales;
+            const orig   = originalScales;
+            const total  = orig.length;
+
+            const step = () => {
+                if (job.cancelled) return;
+                const end = Math.min(total, job.index + CHUNK);
+                for (let i = job.index; i < end; i++) scales[i] = orig[i] * factor;
+                job.index = end;
+                if (job.index < total) { requestAnimationFrame(step); return; }
+                currentSplat.data.changed = true;
+                scaleJob = null;
+            };
+            requestAnimationFrame(step);
+        }
+
+        async function loadFromUrl(url, filename) {
+            setStatus('Loading...', 'busy');
+
+            // Clear previous splat
+            while (scene.objects?.length > 0) scene.removeObject(scene.objects[0]);
+            currentSplat = null;
+            originalScales = null;
+            if (scaleJob) { scaleJob.cancelled = true; scaleJob = null; }
+
+            try {
+                await SPLAT.PLYLoader.LoadAsync(url, scene);
+            } catch (err) {
+                setStatus('Failed to load PLY:\n' + err.message, 'error');
+                console.error('[SHARP Viewer] PLYLoader error:', err);
+                return;
+            }
+
+            if (!scene.objects?.length) {
+                setStatus('Loaded but scene is empty — unsupported PLY format?', 'error');
+                return;
+            }
+
+            currentSplat = scene.objects[scene.objects.length - 1];
+
+            if (currentSplat.data?.scales) {
+                originalScales = new Float32Array(currentSplat.data.scales);
+                applyScale(parseFloat(scaleInput.value) || 1.0);
+            }
+
+            // Auto-frame camera from bounding box
+            if (currentSplat.bounds) {
+                const c    = currentSplat.bounds.center();
+                const s    = currentSplat.bounds.size();
+                const dist = Math.max(s.x, s.y, s.z) * 2.0;
+                camera.position.x = c.x;
+                camera.position.y = c.y;
+                camera.position.z = c.z - dist;
+                const target = new SPLAT.Vector3(c.x, c.y, c.z);
+                controls.setCameraTarget(target);
+                initialCam = { x: camera.position.x, y: camera.position.y, z: camera.position.z, target };
+            } else {
+                camera.position.x = 0;
+                camera.position.y = 0;
+                camera.position.z = 5;
+                initialCam = null;
+            }
+            controls.update();
+            hideStatus();
+        }
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            if (!camera || !controls || !initialCam) return;
+            camera.position.x = initialCam.x;
+            camera.position.y = initialCam.y;
+            camera.position.z = initialCam.z;
+            if (initialCam.target) controls.setCameraTarget(initialCam.target);
+            controls.update();
+        });
+
+        scaleInput.addEventListener('change', e => applyScale(parseFloat(e.target.value) || 1.0));
+
+        window.addEventListener('message', ({ data }) => {
+            if (data.type === 'LOAD_PLY_URL' && data.url) {
+                loadFromUrl(data.url, data.filename || 'splat.ply');
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
