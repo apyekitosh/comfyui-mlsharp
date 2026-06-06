@@ -124,13 +124,7 @@
         function applyState(state) {
             camState = Object.assign(camState, state);
             camTarget = new SPLAT.Vector3(camState.pivot_x, camState.pivot_y, camState.pivot_z);
-            const pos = stateToCamPos(camState);
-            camera.position.x = pos.x;
-            camera.position.y = pos.y;
-            camera.position.z = pos.z;
-            camera.raiseChangeEvent?.();
             controls.setCameraTarget(camTarget);
-            controls.update();
             updateHud();
         }
 
@@ -169,6 +163,11 @@
 
             function frame() {
                 controls.update();
+                // Override with our tracked camState so zoom/distance sticks
+                const pos = stateToCamPos(camState);
+                camera.position.x = pos.x;
+                camera.position.y = pos.y;
+                camera.position.z = pos.z;
                 renderer.render(scene, camera);
                 requestAnimationFrame(frame);
             }
