@@ -6,7 +6,7 @@ ComfyUI nodes for [Apple's ML-SHARP](https://github.com/apple/ml-sharp) — sing
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/<your-username>/comfyui-mlsharp.git
+git clone https://github.com/apyekitosh/comfyui-mlsharp.git
 cd comfyui-mlsharp
 pip install -r requirements.txt
 ```
