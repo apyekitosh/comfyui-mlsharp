@@ -62,6 +62,7 @@ Same CPU rasterizer as Shot Render, but uses explicit slider controls for camera
 | `pivot_x` / `pivot_y` / `pivot_z` | Orbit pivot point in scene units |
 | `yaw_deg` / `pitch_deg` / `roll_deg` | Camera rotation angles in degrees |
 | `distance` | Distance from pivot (0 = auto-frame) |
+| `fov_degrees` | Horizontal field of view in degrees (0 = auto) |
 | `output_width` / `output_height` | Render resolution (default 1024x1024) |
 | `gaussian_scale` | Global scale multiplier for Gaussian sizes |
 | `max_gaussians` | Max splats to render (0 = unlimited) |

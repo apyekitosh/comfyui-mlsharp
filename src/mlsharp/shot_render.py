@@ -569,6 +569,11 @@ class SharpCameraRenderNode:
                     {"default": 0.0, "min": 0.0, "max": 1.0e6, "step": 0.01,
                      "tooltip": "Distance from pivot (0 = auto-frame)"},
                 ),
+                "fov_degrees": (
+                    "FLOAT",
+                    {"default": 0.0, "min": 0.0, "max": 160.0, "step": 0.5,
+                     "tooltip": "Horizontal field of view in degrees (0 = auto)"},
+                ),
                 "output_width": (
                     "INT",
                     {"default": 1024, "min": 64, "max": 4096, "step": 64,
@@ -603,8 +608,8 @@ class SharpCameraRenderNode:
 
     def render(self, ply_path: str, pivot_x: float, pivot_y: float, pivot_z: float,
                yaw_deg: float, pitch_deg: float, roll_deg: float, distance: float,
-               output_width: int, output_height: int, gaussian_scale: float,
-               max_gaussians: int, background: str):
+               fov_degrees: float, output_width: int, output_height: int,
+               gaussian_scale: float, max_gaussians: int, background: str):
         if not ply_path:
             raise ValueError("No PLY path provided")
         if not os.path.exists(ply_path):
@@ -628,6 +633,13 @@ class SharpCameraRenderNode:
 
         width = max(int(output_width), 1)
         height = max(int(output_height), 1)
+
+        if fov_degrees > 0:
+            f_px = width / (2.0 * math.tan(math.radians(fov_degrees) * 0.5))
+            camera_state["vp_fx"] = f_px
+            camera_state["vp_fy"] = f_px
+            camera_state["vp_width"] = float(width)
+            camera_state["vp_height"] = float(height)
 
         print(f"[SHARP Camera] Rendering {width}x{height} from '{os.path.basename(ply_path)}' "
               f"(yaw={camera_state['yaw_deg']:.1f}, pitch={camera_state['pitch_deg']:.1f}, dist={camera_state['distance']:.2f})")
