@@ -236,6 +236,7 @@ def _parse_interactive_state(state_text: str | None) -> dict[str, float]:
     default = {
         "pivot_x": 0.0, "pivot_y": 0.0, "pivot_z": 0.0,
         "yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0, "distance": 0.0,
+        "vp_fx": 0.0, "vp_fy": 0.0, "vp_width": 0.0, "vp_height": 0.0,
     }
     if not state_text:
         return default
@@ -290,9 +291,17 @@ def _render_gaussians(
     cam_pos = cam["position"]
     r_wc = _view_rotation_from_camera_state(camera_state)
 
-    # Default pinhole intrinsics
-    f = min(width, height) * 0.9
-    fx = fy = f
+    vp_fx = float(camera_state.get("vp_fx", 0))
+    vp_fy = float(camera_state.get("vp_fy", 0))
+    vp_width = float(camera_state.get("vp_width", 0))
+    vp_height = float(camera_state.get("vp_height", 0))
+
+    if vp_fx > 0 and vp_width > 0:
+        fx = vp_fx * (width / vp_width)
+        fy = vp_fy * (height / vp_height)
+    else:
+        f = min(width, height) * 0.9
+        fx = fy = f
     cx = width * 0.5
     cy = height * 0.5
 
@@ -514,3 +523,128 @@ class SharpShotRenderNode:
 
 NODE_CLASS_MAPPINGS = {"SharpShotRender": SharpShotRenderNode}
 NODE_DISPLAY_NAME_MAPPINGS = {"SharpShotRender": "SHARP Shot Render"}
+
+
+class SharpCameraRenderNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ply_path": ("STRING", {
+                    "forceInput": True,
+                    "tooltip": "Path to a Gaussian Splatting PLY file (from SHARP Gaussian Splat node)",
+                }),
+                "pivot_x": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -1.0e6, "max": 1.0e6, "step": 0.01,
+                     "tooltip": "Orbit pivot X in scene units"},
+                ),
+                "pivot_y": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -1.0e6, "max": 1.0e6, "step": 0.01,
+                     "tooltip": "Orbit pivot Y in scene units"},
+                ),
+                "pivot_z": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -1.0e6, "max": 1.0e6, "step": 0.01,
+                     "tooltip": "Orbit pivot Z in scene units"},
+                ),
+                "yaw_deg": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -360.0, "max": 360.0, "step": 0.5,
+                     "tooltip": "Horizontal orbit angle in degrees"},
+                ),
+                "pitch_deg": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -89.0, "max": 89.0, "step": 0.5,
+                     "tooltip": "Vertical orbit angle in degrees"},
+                ),
+                "roll_deg": (
+                    "FLOAT",
+                    {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.5,
+                     "tooltip": "Camera roll in degrees"},
+                ),
+                "distance": (
+                    "FLOAT",
+                    {"default": 0.0, "min": 0.0, "max": 1.0e6, "step": 0.01,
+                     "tooltip": "Distance from pivot (0 = auto-frame)"},
+                ),
+                "output_width": (
+                    "INT",
+                    {"default": 1024, "min": 64, "max": 4096, "step": 64,
+                     "tooltip": "Rendered image width"},
+                ),
+                "output_height": (
+                    "INT",
+                    {"default": 1024, "min": 64, "max": 4096, "step": 64,
+                     "tooltip": "Rendered image height"},
+                ),
+                "gaussian_scale": (
+                    "FLOAT",
+                    {"default": 1.0, "min": 0.01, "max": 100.0, "step": 0.01,
+                     "tooltip": "Global scale multiplier for Gaussian sizes"},
+                ),
+                "max_gaussians": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 500000, "step": 1000,
+                     "tooltip": "Max splats to render (0 = unlimited)"},
+                ),
+                "background": (
+                    ["black", "mid-gray", "white"],
+                    {"default": "black",
+                     "tooltip": "Background color for empty areas"},
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "render"
+    CATEGORY = "3D"
+
+    def render(self, ply_path: str, pivot_x: float, pivot_y: float, pivot_z: float,
+               yaw_deg: float, pitch_deg: float, roll_deg: float, distance: float,
+               output_width: int, output_height: int, gaussian_scale: float,
+               max_gaussians: int, background: str):
+        if not ply_path:
+            raise ValueError("No PLY path provided")
+        if not os.path.exists(ply_path):
+            raise FileNotFoundError(f"PLY file not found: {ply_path}")
+
+        ply_data = _load_gaussian_ply(ply_path)
+        xyz = ply_data["xyz"]
+
+        camera_state = {
+            "pivot_x": pivot_x, "pivot_y": pivot_y, "pivot_z": pivot_z,
+            "yaw_deg": yaw_deg, "pitch_deg": pitch_deg, "roll_deg": roll_deg,
+            "distance": distance,
+            "vp_fx": 0.0, "vp_fy": 0.0, "vp_width": 0.0, "vp_height": 0.0,
+        }
+        if abs(distance) <= 1e-5:
+            auto = _build_framed_state(xyz)
+            auto["pivot_x"] = pivot_x
+            auto["pivot_y"] = pivot_y
+            auto["pivot_z"] = pivot_z
+            camera_state = auto
+
+        width = max(int(output_width), 1)
+        height = max(int(output_height), 1)
+
+        print(f"[SHARP Camera] Rendering {width}x{height} from '{os.path.basename(ply_path)}' "
+              f"(yaw={camera_state['yaw_deg']:.1f}, pitch={camera_state['pitch_deg']:.1f}, dist={camera_state['distance']:.2f})")
+
+        image = _render_gaussians(
+            ply_path=ply_path,
+            camera_state=camera_state,
+            width=width,
+            height=height,
+            gaussian_scale=gaussian_scale,
+            max_gaussians=0 if max_gaussians <= 0 else int(max_gaussians),
+            background=background,
+            ply_data=ply_data,
+        )
+        image_tensor = torch.from_numpy(image.astype(np.float32)[None, ...])
+        return (image_tensor,)
+
+
+NODE_CLASS_MAPPINGS["SharpCameraRender"] = SharpCameraRenderNode
+NODE_DISPLAY_NAME_MAPPINGS["SharpCameraRender"] = "SHARP Camera Render"

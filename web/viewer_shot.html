@@ -132,7 +132,13 @@
             if (!camState) return;
             window.parent.postMessage({
                 type: "SHARP_CAMERA_CHANGED",
-                state: { ...camState },
+                state: {
+                    ...camState,
+                    vp_fx: camera.data.fx,
+                    vp_fy: camera.data.fy,
+                    vp_width: canvas.clientWidth,
+                    vp_height: canvas.clientHeight,
+                },
             }, "*");
             needsCommit = false;
             updateHud();

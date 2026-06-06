@@ -52,6 +52,21 @@ The node outputs an `IMAGE` tensor that can be chained to `PreviewImage`, `SaveI
 
 > **Tip:** Orbit in the viewport to find the angle you want, click **Commit View** (or just let go of the mouse — the camera auto-commits on drag-end), then re-run the node. The image output will match what you see.
 
+### SHARP Camera Render
+
+Same CPU rasterizer as Shot Render, but uses explicit slider controls for camera positioning instead of an interactive viewport. Useful for precise, reproducible camera angles.
+
+| Input | Description |
+|---|---|
+| `ply_path` | Path to a `.ply` file (from SHARP Gaussian Splat) |
+| `pivot_x` / `pivot_y` / `pivot_z` | Orbit pivot point in scene units |
+| `yaw_deg` / `pitch_deg` / `roll_deg` | Camera rotation angles in degrees |
+| `distance` | Distance from pivot (0 = auto-frame) |
+| `output_width` / `output_height` | Render resolution (default 1024x1024) |
+| `gaussian_scale` | Global scale multiplier for Gaussian sizes |
+| `max_gaussians` | Max splats to render (0 = unlimited) |
+| `background` | Background color (black, mid-gray, white) |
+
 ---
 
 This project includes code from Apple's ML-SHARP project.
