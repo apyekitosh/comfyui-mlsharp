@@ -36,6 +36,22 @@ Makes a `.ply` Gaussian Splat file available for preview in the ComfyUI frontend
 |---|---|
 | `ply_path` | Path to a `.ply` file (from SHARP Gaussian Splat) |
 
+### SHARP Shot Render
+
+Renders a `.ply` Gaussian Splat to a 2D image using a CPU rasterizer (no CUDA required). Includes an interactive 3D viewport — orbit/pan/zoom in the viewer, then re-run the node to render the image at the current camera angle.
+
+| Input | Description |
+|---|---|
+| `ply_path` | Path to a `.ply` file (from SHARP Gaussian Splat) |
+| `output_width` / `output_height` | Render resolution (default 1024x1024) |
+| `gaussian_scale` | Global scale multiplier for Gaussian sizes |
+| `max_gaussians` | Max splats to render (0 = unlimited). Lower values = faster preview |
+| `background` | Background color (black, mid-gray, white) |
+
+The node outputs an `IMAGE` tensor that can be chained to `PreviewImage`, `SaveImage`, or any other image node.
+
+> **Tip:** Orbit in the viewport to find the angle you want, click **Commit View** (or just let go of the mouse — the camera auto-commits on drag-end), then re-run the node. The image output will match what you see.
+
 ---
 
 This project includes code from Apple's ML-SHARP project.

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SHARP Shot Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #viewer {
+            position: relative;
+            width: 100%; height: 100%;
+            background: #1a1a1a;
+        }
+        canvas {
+            width: 100%; height: 100%;
+            display: block;
+        }
+        #hud {
+            position: absolute;
+            top: 8px; left: 8px;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.65);
+            border-radius: 6px;
+            font-size: 11px; line-height: 1.4;
+            color: #ddd; pointer-events: none;
+            z-index: 5;
+        }
+        #status {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px; color: #555;
+            pointer-events: none;
+        }
+        #toolbar {
+            position: absolute;
+            bottom: 12px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 8px;
+        }
+        #toolbar button {
+            background: #333; border: 1px solid #555;
+            color: #ccc; padding: 4px 12px;
+            border-radius: 4px; cursor: pointer; font-size: 11px;
+        }
+        #toolbar button:hover { background: #444; color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="viewer">
+        <canvas id="canvas"></canvas>
+        <div id="status">Waiting for PLY...</div>
+        <div id="hud" style="display:none"></div>
+    </div>
+    <div id="toolbar">
+        <button id="commitBtn" title="Commit current viewport camera state">Commit View</button>
+        <button id="resetBtn">Reset View</button>
+    </div>
+
+    <script src="./js/gsplat-bundle.js"></script>
+    <script type="module">
+        const RAD2DEG = 180 / Math.PI;
+
+        const canvas   = document.getElementById('canvas');
+        const statusEl = document.getElementById('status');
+        const hudEl    = document.getElementById('hud');
+
+        let SPLAT, scene, camera, renderer, controls;
+        let currentSplat = null;
+        let camState = { pivot_x: 0, pivot_y: 0, pivot_z: 0, yaw_deg: 0, pitch_deg: 0, roll_deg: 0, distance: 5 };
+        let camTarget = null;
+        let isDragging = false;
+        let dragButton = -1;
+        let dragPrevX = 0, dragPrevY = 0;
+        let needsCommit = false;
+        let initialCam = null;
+
+        function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+        function len3(x, y, z) { return Math.sqrt(x*x + y*y + z*z); }
+
+        function orbitAxes(yawDeg, pitchDeg) {
+            const ya = yawDeg * Math.PI / 180;
+            const pa = pitchDeg * Math.PI / 180;
+            const cy = Math.cos(ya), sy = Math.sin(ya);
+            const cp = Math.cos(pa), sp = Math.sin(pa);
+            return {
+                right:   { x:  cy,            y: 0,  z: sy },
+                down:    { x:  sy * sp,       y: cp, z: -cy * sp },
+                forward: { x: -sy * cp,       y: sp, z:  cy * cp },
+            };
+        }
+
+        function stateToCamPos(state) {
+            const ax = orbitAxes(state.yaw_deg, state.pitch_deg);
+            return {
+                x: state.pivot_x - ax.forward.x * state.distance,
+                y: state.pivot_y - ax.forward.y * state.distance,
+                z: state.pivot_z - ax.forward.z * state.distance,
+            };
+        }
+
+        function camToState(pos, target) {
+            const dx = target.x - pos.x;
+            const dy = target.y - pos.y;
+            const dz = target.z - pos.z;
+            const dist = len3(dx, dy, dz) || 0.01;
+            const fx = dx / dist, fy = dy / dist, fz = dz / dist;
+            const yaw = Math.atan2(fx, fz) * RAD2DEG;
+            const pitch = Math.asin(clamp(fy, -0.9999, 0.9999)) * RAD2DEG;
+            return {
+                pivot_x: target.x, pivot_y: target.y, pivot_z: target.z,
+                yaw_deg: yaw, pitch_deg: pitch, roll_deg: 0, distance: dist,
+            };
+        }
+
+        function applyState(state) {
+            camState = Object.assign(camState, state);
+            camTarget = new SPLAT.Vector3(camState.pivot_x, camState.pivot_y, camState.pivot_z);
+            const pos = stateToCamPos(camState);
+            camera.position.x = pos.x;
+            camera.position.y = pos.y;
+            camera.position.z = pos.z;
+            camera.raiseChangeEvent?.();
+            controls.setCameraTarget(camTarget);
+            controls.update();
+            updateHud();
+        }
+
+        function sendCameraState() {
+            if (!camState) return;
+            window.parent.postMessage({
+                type: "SHARP_CAMERA_CHANGED",
+                state: { ...camState },
+            }, "*");
+            needsCommit = false;
+            updateHud();
+        }
+
+        function updateHud() {
+            const s = camState;
+            if (!s) return;
+            hudEl.style.display = 'block';
+            hudEl.innerHTML = [
+                `yaw ${s.yaw_deg.toFixed(1)}&deg;`,
+                `pitch ${s.pitch_deg.toFixed(1)}&deg;`,
+                `dist ${s.distance.toFixed(2)}`,
+                needsCommit ? ' <span style="color:#fa0">*</span>' : '',
+            ].join(' &middot; ');
+        }
+
+        function init() {
+            SPLAT    = window.GSPLAT;
+            scene    = new SPLAT.Scene();
+            camera   = new SPLAT.Camera();
+            renderer = new SPLAT.WebGLRenderer(canvas);
+            controls = new SPLAT.OrbitControls(camera, canvas);
+
+            const resize = () => renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            new ResizeObserver(resize).observe(canvas);
+            resize();
+
+            function frame() {
+                controls.update();
+                renderer.render(scene, camera);
+                requestAnimationFrame(frame);
+            }
+            frame();
+        }
+
+        async function loadFromUrl(url, filename) {
+            statusEl.textContent = 'Loading...';
+            statusEl.style.display = 'flex';
+
+            while (scene.objects?.length > 0) scene.removeObject(scene.objects[0]);
+            currentSplat = null;
+
+            try {
+                await SPLAT.PLYLoader.LoadAsync(url, scene);
+            } catch (err) {
+                statusEl.textContent = 'Failed to load PLY';
+                statusEl.style.display = 'flex';
+                return;
+            }
+
+            if (!scene.objects?.length) {
+                statusEl.textContent = 'Empty scene';
+                statusEl.style.display = 'flex';
+                return;
+            }
+
+            currentSplat = scene.objects[scene.objects.length - 1];
+            statusEl.style.display = 'none';
+
+            if (currentSplat.bounds) {
+                const c = currentSplat.bounds.center();
+                const s = currentSplat.bounds.size();
+                const dist = Math.max(s.x, s.y, s.z) * 2.0;
+                camState = {
+                    pivot_x: c.x, pivot_y: c.y, pivot_z: c.z,
+                    yaw_deg: 0, pitch_deg: 0, roll_deg: 0, distance: Math.max(dist, 0.1),
+                };
+                initialCam = { ...camState };
+            } else {
+                camState = { pivot_x: 0, pivot_y: 0, pivot_z: 0, yaw_deg: 0, pitch_deg: 0, roll_deg: 0, distance: 5 };
+                initialCam = { ...camState };
+            }
+            applyState(camState);
+            sendCameraState();
+        }
+
+        function readStateFromCam() {
+            if (!camTarget) return null;
+            const pos = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+            const tgt = { x: camTarget.x, y: camTarget.y, z: camTarget.z };
+            return camToState(pos, tgt);
+        }
+
+        // ── pointer handlers ──
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            canvas.setPointerCapture(e.pointerId);
+            isDragging = true;
+            dragButton = e.button;
+            dragPrevX = e.clientX;
+            dragPrevY = e.clientY;
+            e.stopImmediatePropagation();
+        }, true);
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - dragPrevX;
+            const dy = e.clientY - dragPrevY;
+            dragPrevX = e.clientX;
+            dragPrevY = e.clientY;
+
+            const orbitSpeed = 0.3;
+            const panSpeed = 0.002;
+            const rollSpeed = 0.3;
+
+            if (dragButton === 0 && !e.ctrlKey && !e.metaKey) {
+                // orbit
+                camState.yaw_deg   += dx * orbitSpeed;
+                camState.pitch_deg = clamp(camState.pitch_deg - dy * orbitSpeed, -89, 89);
+            } else if (dragButton === 0 && (e.ctrlKey || e.metaKey)) {
+                // roll
+                camState.roll_deg += dx * rollSpeed;
+            } else if (dragButton === 1 || dragButton === 2 || (dragButton === 0 && e.shiftKey)) {
+                // pan
+                const ax = orbitAxes(camState.yaw_deg, camState.pitch_deg);
+                const scale = panSpeed * camState.distance;
+                camState.pivot_x += ax.right.x * (-dx * scale) + ax.down.x * (-dy * scale);
+                camState.pivot_y += ax.right.y * (-dx * scale) + ax.down.y * (-dy * scale);
+                camState.pivot_z += ax.right.z * (-dx * scale) + ax.down.z * (-dy * scale);
+            }
+            applyState(camState);
+            needsCommit = true;
+            e.stopImmediatePropagation();
+        }, true);
+
+        canvas.addEventListener('lostpointercapture', () => {
+            if (isDragging) {
+                isDragging = false;
+                if (needsCommit) sendCameraState();
+            }
+        });
+
+        window.addEventListener('pointerup', () => {
+            if (isDragging) {
+                isDragging = false;
+                if (needsCommit) sendCameraState();
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            camState.distance = clamp(camState.distance * (1 + e.deltaY * 0.001), 0.01, 1000);
+            applyState(camState);
+            needsCommit = true;
+            sendCameraState();
+            e.stopImmediatePropagation();
+        }, { passive: false, capture: true });
+
+        document.getElementById('commitBtn').addEventListener('click', () => sendCameraState());
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            if (initialCam) {
+                applyState(initialCam);
+                sendCameraState();
+            }
+        });
+
+        window.addEventListener('message', ({ data }) => {
+            if (data.type === 'LOAD_PLY_URL' && data.url) {
+                loadFromUrl(data.url, data.filename || 'splat.ply');
+            } else if (data.type === 'REMOTE_STATE' && data.state) {
+                applyState(data.state);
+                sendCameraState();
+            } else if (data.type === 'CAMERA_RESET' && initialCam) {
+                applyState(initialCam);
+                sendCameraState();
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
