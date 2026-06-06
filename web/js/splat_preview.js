@@ -30,8 +30,18 @@ app.registerExtension({
                 setValue() {},
             });
 
-            widget.computeSize = () => [460, 380];
-            this.setSize([460, 430]);
+            const OVERHEAD = 50;
+            let widgetH = 380;
+
+            widget.computeSize = (w) => [w, widgetH];
+            this.setSize([460, widgetH + OVERHEAD]);
+
+            const origOnResize = this.onResize;
+            this.onResize = function (size) {
+                origOnResize?.apply(this, arguments);
+                widgetH = Math.max(150, size[1] - OVERHEAD);
+                app.graph.setDirtyCanvas(true, true);
+            };
 
             let iframeReady = false;
             iframe.addEventListener("load", () => { iframeReady = true; });
