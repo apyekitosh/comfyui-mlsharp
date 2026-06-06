@@ -59,6 +59,8 @@ app.registerExtension({
                 setValue() {},
             });
 
+            this.setSize([520, 580]);
+
             // ── onExecuted: load PLY into viewer ──
 
             const onExecuted = this.onExecuted;
