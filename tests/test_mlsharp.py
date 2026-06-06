@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-"""Tests for `applesharp` package."""
+"""Tests for `mlsharp` package."""
 
 import pytest
-from src.applesharp.nodes import Example
+from src.mlsharp.nodes import Example
 
 @pytest.fixture
 def example_node():

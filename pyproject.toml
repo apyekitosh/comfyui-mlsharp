@@ -3,7 +3,7 @@ requires = ["setuptools>=70.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "applesharp"
+name = "comfyui-mlsharp"
 version = "0.0.1"
 description = "Implementation of apple sharp without breaking comfy install and every other node and functionality"
 authors = [
@@ -34,17 +34,17 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/apyekitosh/applesharp"
-BugTracker = "https://github.com/apyekitosh/applesharp/issues"
-Documentation = "https://github.com/apyekitosh/applesharp/wiki"
+Repository = "https://github.com/apyekitosh/comfyui-mlsharp"
+BugTracker = "https://github.com/apyekitosh/comfyui-mlsharp/issues"
+Documentation = "https://github.com/apyekitosh/comfyui-mlsharp/wiki"
 
 
 [tool.comfy]
 PublisherId = "apyekitosh"
-DisplayName = "ComfyUI-AppleSharp"
+DisplayName = "ComfyUI-MLSharp"
 Icon = ""
 Tags = []
-Repository = "https://github.com/apyekitosh/applesharp"
+Repository = "https://github.com/apyekitosh/comfyui-mlsharp"
 
 includes = []
 

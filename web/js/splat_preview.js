@@ -2,11 +2,11 @@ import { app } from "../../../scripts/app.js";
 
 const FOLDER = (() => {
     const m = import.meta.url.match(/\/extensions\/([^/]+)\//);
-    return m ? m[1] : "applesharp";
+    return m ? m[1] : "comfyui-mlsharp";
 })();
 
 app.registerExtension({
-    name: "applesharp.splatpreview",
+    name: "mlsharp.splatpreview",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== "SharpSplatPreview") return;
@@ -57,7 +57,7 @@ app.registerExtension({
                 }
 
                 const subfolder = message?.subfolder?.[0] ?? "";
-                const url = `/applesharp/ply?filename=${encodeURIComponent(plyFile)}&subfolder=${encodeURIComponent(subfolder)}`;
+                const url = `/mlsharp/ply?filename=${encodeURIComponent(plyFile)}&subfolder=${encodeURIComponent(subfolder)}`;
 
                 const send = () => {
                     if (!iframe.contentWindow) return;

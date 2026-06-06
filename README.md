@@ -1,4 +1,4 @@
-# ComfyUI-AppleSharp
+# ComfyUI-MLSharp
 
 Implementation of apple sharp without breaking comfy install and every other node and functionality
 
@@ -21,7 +21,7 @@ Implementation of apple sharp without breaking comfy install and every other nod
 To install the dev dependencies and pre-commit (will run the ruff hook), do:
 
 ```bash
-cd applesharp
+cd comfyui-mlsharp
 pip install -e .[dev]
 pre-commit install
 ```
@@ -42,7 +42,7 @@ git push
 
 ## Writing custom nodes
 
-An example custom node is located in [node.py](src/applesharp/nodes.py). To learn more, read the [docs](https://docs.comfy.org/essentials/custom_node_overview).
+An example custom node is located in [node.py](src/comfyui-mlsharp/nodes.py). To learn more, read the [docs](https://docs.comfy.org/essentials/custom_node_overview).
 
 
 ## Tests

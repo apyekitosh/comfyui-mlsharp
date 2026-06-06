@@ -1,4 +1,4 @@
-* applesharp version:
+* comfyui-mlsharp version:
 * Python version:
 * Operating System:
 

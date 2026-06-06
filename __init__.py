@@ -1,4 +1,4 @@
-"""Top-level package for applesharp."""
+"""Top-level package for comfyui-mlsharp."""
 
 __all__ = [
     "NODE_CLASS_MAPPINGS",
@@ -10,8 +10,8 @@ __author__ = """Apyekitosh"""
 __email__ = "apy.q.ns@gmail.com"
 __version__ = "0.0.1"
 
-from .src.applesharp.nodes import NODE_CLASS_MAPPINGS
-from .src.applesharp.nodes import NODE_DISPLAY_NAME_MAPPINGS
+from .src.mlsharp.nodes import NODE_CLASS_MAPPINGS
+from .src.mlsharp.nodes import NODE_DISPLAY_NAME_MAPPINGS
 
 WEB_DIRECTORY = "./web"
 
@@ -23,7 +23,7 @@ try:
     from server import PromptServer
     import folder_paths
 
-    @PromptServer.instance.routes.get("/applesharp/ply")
+    @PromptServer.instance.routes.get("/mlsharp/ply")
     async def serve_ply(request):
         import io
         from plyfile import PlyData
@@ -53,6 +53,6 @@ try:
         return web.Response(body=buf.getvalue(),
                             content_type="application/octet-stream")
 
-    print("[SHARP] Registered /applesharp/ply route")
+    print("[SHARP] Registered /mlsharp/ply route")
 except Exception as _e:
     print(f"[SHARP] Warning: could not register PLY route: {_e}")

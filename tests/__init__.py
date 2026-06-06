@@ -1,1 +1,1 @@
-"""Unit test package for applesharp."""
+"""Unit test package for mlsharp."""
